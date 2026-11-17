@@ -493,7 +493,7 @@
       <div class="seg-panel hidden" id="seg-admin">
         <label class="landing-field" for="landing-admin-pass">
           <span>PASSWORD ADMIN</span>
-          <input type="password" id="landing-admin-pass" class="landing-input" placeholder="••••••••" autocomplete="current-password" autocapitalize="none" spellcheck="false" enterkeyhint="go" style="letter-spacing:4px;text-transform:none">
+          <input type="password" id="landing-admin-pass" class="landing-input" placeholder="••••••••" autocomplete="current-password" autocapitalize="characters" spellcheck="false" enterkeyhint="go" style="letter-spacing:4px;text-transform:uppercase">
         </label>
         <p class="landing-tip">🔒 Area khusus penguji</p>
         <button class="btn primary block landing-btn" id="btn-enter-admin">Masuk Admin →</button>
@@ -977,12 +977,12 @@
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
       <label class="field" style="margin:0;flex:0 0 auto"><span>Poin per soal</span><input type="number" id="bulk-default-points" value="1" min="0" step="0.5" style="width:88px"></label>
-      <button class="btn primary small" id="btn-bulk-parse">🔍 Parse</button>
+      <button class="btn outline small" id="btn-bulk-parse">👁️ Preview</button>
     </div>
     <div id="bulk-preview" style="margin-top:12px;max-height:200px;overflow-y:auto"></div>
     <div class="modal-actions">
       <button class="btn outline" id="bulk-cancel">Batal</button>
-      <button class="btn primary" id="bulk-save" disabled>Simpan</button>
+      <button class="btn primary" id="bulk-save">Simpan</button>
     </div>
   </div>
 </div>
@@ -3331,7 +3331,12 @@ function enterAdmin(){
   }
 }
 $("btn-enter-admin").onclick=enterAdmin;
+$("landing-admin-pass").addEventListener("input",e=>{const pos=e.target.selectionStart;e.target.value=e.target.value.toUpperCase();try{e.target.setSelectionRange(pos,pos)}catch(_){}});
 $("landing-admin-pass").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();enterAdmin()}});
+if($("admin-pass")){
+  $("admin-pass").addEventListener("input",e=>{const pos=e.target.selectionStart;e.target.value=e.target.value.toUpperCase();try{e.target.setSelectionRange(pos,pos)}catch(_){}});
+  $("admin-pass").style.textTransform="uppercase";
+}
 
 $("btn-toggle-live").onclick=()=>{
   const box=$("landing-exams");
@@ -3756,7 +3761,8 @@ function updateSchedulePreview(){
   const dur=$("cfg-duration").value||20;
   box.innerHTML=`🗓️ Buka: <b>${fmtDT(startAt)}</b> &nbsp;•&nbsp; Tutup: <b>${fmtDT(endAt)}</b>${nextDay?" <span class='pill upcoming'>lewat tengah malam</span>":""}<br>Durasi <b>${dur} menit</b> per siswa.`;
 }
-$("cfg-access-code").oninput = (e) => e.target.value = e.target.value.toUpperCase();
+$("cfg-access-code").addEventListener("input",e=>{e.target.value=e.target.value.toUpperCase()});
+$("cfg-access-code").addEventListener("blur",e=>{e.target.value=e.target.value.trim().toUpperCase()});
 
 let cfgSaveT=null,cfgSaving=false;
 function flashCfgStatus(text,ok){
@@ -3877,6 +3883,10 @@ function renderSections(ex){
         </select>`}
         ${isSub?`<span class="pi-status" style="font-size:10.5px">${sectionTypeLabel(s)}</span>`:""}
         <span class="sec-count">${count} soal${childCount?` +${childCount} di sub`:""}</span>
+        <label title="Poin default soal di bagian ini" style="display:inline-flex;align-items:center;gap:3px;font-size:11.5px;cursor:pointer;white-space:nowrap">
+          💯 <input type="number" data-sec-pts min="0" step="0.5" value="${s.defaultPoints!=null?s.defaultPoints:""}" placeholder="pt" style="width:52px;padding:4px 6px;font-size:12.5px;border:1.5px solid var(--border);border-radius:8px">
+        </label>
+        <button class="btn outline small" data-sec-apply-pts title="Terapkan poin ke semua soal di bagian ini" style="padding:4px 8px;font-size:11.5px">→ Soal</button>
         <label title="Warna background soal di bagian ini" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer">
           🎨 <input type="color" data-sec-color value="${esc(secColor||"#eff6ff")}" style="width:28px;height:28px;padding:0;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">
         </label>
@@ -3893,6 +3903,33 @@ function renderSections(ex){
       await update(R.exam(state.curExamId),{sections:cur});
     },600);};
 
+    const ptsInp=row.querySelector("[data-sec-pts]");
+    if(ptsInp){
+      ptsInp.onchange=async()=>{
+        const v=ptsInp.value===""?null:Number(ptsInp.value);
+        const cur=examSections(state.curExam).map(x=>x.id===s.id?{...x,defaultPoints:(v==null||Number.isNaN(v))?null:v}:x);
+        await update(R.exam(state.curExamId),{sections:cur});
+        toast("✓ Poin bagian disimpan");
+      };
+    }
+    const applyPts=row.querySelector("[data-sec-apply-pts]");
+    if(applyPts) applyPts.onclick=async()=>{
+      const v=ptsInp&&ptsInp.value!==""?Number(ptsInp.value):null;
+      if(v==null||Number.isNaN(v)){toast("Isi poin bagian dulu",true);return}
+      const childIds=childSections(state.curExam,s.id).map(c=>c.id);
+      const targetIds=new Set([s.id,...childIds]);
+      const affected=Object.entries(state.curExam.questions||{}).filter(([,q])=>targetIds.has(q.sectionId));
+      if(!affected.length){toast("Tidak ada soal di bagian ini",true);return}
+      if(!await askConfirm("Terapkan Poin Bagian",`Set <b>${v}</b> poin ke <b>${affected.length}</b> soal di bagian <b>${esc(s.name)}</b>?`,"Terapkan","primary"))return;
+      for(const [qid] of affected){
+        await update(R.qItem(state.curExamId,qid),{points:v,pointsCustom:false});
+      }
+      const cur=examSections(state.curExam).map(x=>x.id===s.id?{...x,defaultPoints:v}:x);
+      await update(R.exam(state.curExamId),{sections:cur});
+      toast(`✅ ${affected.length} soal → ${v} poin`);
+      state.lastQSig=null;
+      renderQuestions(state.curExam,true);
+    };
     const colorInp=row.querySelector("[data-sec-color]");
     if(colorInp) colorInp.onchange=async()=>{
       const cur=examSections(state.curExam).map(x=>x.id===s.id?{...x,color:colorInp.value}:x);
@@ -4178,7 +4215,12 @@ function renderQuestions(ex,force){
     box.appendChild(head);
     // Nomor soal per-bagian (mulai dari 1 di tiap bagian)
     qids.forEach((id,i)=>{
-      box.appendChild(buildQuestionCard(id,ex.questions[id],i+1,ex.defaultPoints??1));
+      {
+        const qq=ex.questions[id];
+        const sec=qq?.sectionId?sectionById(ex,qq.sectionId):null;
+        const def=(sec&&sec.defaultPoints!=null)?Number(sec.defaultPoints):(ex.defaultPoints??1);
+        box.appendChild(buildQuestionCard(id,qq,i+1,def));
+      }
     });
     const add=document.createElement("button");
     add.className="q-add-at-end";
@@ -4198,7 +4240,7 @@ async function addQuestionToSection(sectionId){
   const secs=examSections(ex);
   const sec=secs.find(s=>s.id===sectionId)||null;
   const type=sectionType(sec);
-  let defPts=ex.defaultPoints??1;
+  let defPts=(sec&&sec.defaultPoints!=null)?Number(sec.defaultPoints):(ex.defaultPoints??1);
   let custom=false;
   if(type==="essay"){
     const last=Object.values(ex.questions||{})
@@ -5119,7 +5161,8 @@ $("btn-bulk-add").onclick=()=>{
   if($("bulk-essay-q-text"))$("bulk-essay-q-text").value="";
   $("bulk-essay-key-text").value="";
   $("bulk-default-points").value=state.curExam?.defaultPoints??1;
-  $("bulk-preview").innerHTML="";$("bulk-save").disabled=true;
+  $("bulk-preview").innerHTML='<div class="empty-msg muted small">Opsional: tekan 👁️ Preview untuk cek sebelum simpan.</div>';
+  if($("bulk-save")) $("bulk-save").disabled=false;
   renderBulkTargets();
   $("bulk-modal").classList.remove("hidden");
 };
@@ -5132,8 +5175,8 @@ $("btn-bulk-parse").onclick=()=>{
     $("bulk-key-text").value,
     $("bulk-essay-key-text").value
   );
-  if(!list.length){$("bulk-preview").innerHTML='<div class="empty-msg">Belum ada soal yang terbaca.</div>';$("bulk-save").disabled=true;return}
-  $("bulk-preview").innerHTML=list.map((q,i)=>{
+  if(!list.length){$("bulk-preview").innerHTML='<div class="empty-msg">Belum ada soal yang terbaca.</div>';return}
+  $("bulk-preview").innerHTML=`<div class="small muted" style="margin-bottom:8px">Preview ${list.length} soal (belum disimpan)</div>`+list.map((q,i)=>{
     const det=detectQuestionType(q);
     const badge=det==="mc"
       ?`<span class="badge ok">Pilihan Ganda</span>${q.hasKey?`<span class="badge ok">Kunci ${String.fromCharCode(65+q.correct)}</span>`:`<span class="badge warn">Tanpa Kunci</span>`}`
@@ -5144,26 +5187,38 @@ $("btn-bulk-parse").onclick=()=>{
     return `<div class="preview-q"><div class="pq-text">${i+1}. ${q.text?esc(q.text):""} ${badge} ${mediaBadges}</div>${
     q.options.map((o,j)=>`<div class="pq-opt">${String.fromCharCode(65+j)}. ${esc(o)}</div>`).join("")}</div>`;
   }).join("");
-  $("bulk-save").disabled=false;
 };
 $("bulk-cancel").onclick=()=>$("bulk-modal").classList.add("hidden");
 $("bulk-save").onclick=async()=>{
+  if($("bulk-save").dataset.busy==="1")return;
   const list=parseBulkText(
     [$("bulk-q-text").value, ($("bulk-essay-q-text")?.value||"")].filter(Boolean).join("\n"),
     $("bulk-key-text").value,
     $("bulk-essay-key-text").value
   );
   if(!list.length){toast("Tidak ada soal untuk disimpan",true);return}
-  const qs=await bulkToQuestions(list);
-  for(const q of qs){await set(push(R.questions(state.curExamId)),q)}
-  $("bulk-modal").classList.add("hidden");
-  state.lastQSig=null;
-  const nPG=qs.filter(q=>q.type==="mc").length;
-  const nEs=qs.filter(q=>q.type==="essay").length;
-  const nNoKey=qs.filter(q=>q.noKey).length;
-  const nMedia=qs.filter(q=>q.image||q.audio).length;
-  toast(`✅ ${qs.length} soal ditambahkan (${nPG} Pilihan Ganda, ${nEs} Esai${nMedia?`, ${nMedia} dengan media`:""})`);
-  if(nNoKey)setTimeout(()=>toast(`⚠️ ${nNoKey} soal Pilihan Ganda tanpa kunci jawaban — dinilai manual`),700);
+  $("bulk-save").dataset.busy="1";
+  $("bulk-save").disabled=true;
+  try{
+    const qs=await bulkToQuestions(list);
+    for(const q of qs){await set(push(R.questions(state.curExamId)),q)}
+    // kosongkan supaya tidak double-simpan
+    $("bulk-q-text").value="";$("bulk-key-text").value="";
+    if($("bulk-essay-q-text"))$("bulk-essay-q-text").value="";
+    $("bulk-essay-key-text").value="";
+    $("bulk-preview").innerHTML="";
+    $("bulk-modal").classList.add("hidden");
+    state.lastQSig=null;
+    const nPG=qs.filter(q=>q.type==="mc").length;
+    const nEs=qs.filter(q=>q.type==="essay").length;
+    const nNoKey=qs.filter(q=>q.noKey).length;
+    const nMedia=qs.filter(q=>q.image||q.audio).length;
+    toast(`✅ ${qs.length} soal ditambahkan (${nPG} Pilihan Ganda, ${nEs} Esai${nMedia?`, ${nMedia} dengan media`:""})`);
+    if(nNoKey)setTimeout(()=>toast(`⚠️ ${nNoKey} soal Pilihan Ganda tanpa kunci jawaban — dinilai manual`),700);
+  }finally{
+    $("bulk-save").dataset.busy="0";
+    $("bulk-save").disabled=false;
+  }
 };
 
 $("btn-import-xlsx").onclick=()=>{
@@ -5690,13 +5745,13 @@ function renderResults(ex){
     const q=ex.questions?.[qid];
     headHTML+=`<th>Q${i+1}${q?.type==="essay"?" <span style='color:var(--warn)'>E</span>":""}${q?.noKey?" <span style='color:var(--muted)' title='Tanpa kunci - dinilai manual'>M</span>":""}${q?.required?" <span style='color:var(--danger)' title='Wajib diisi'>*</span>":""}</th>`;
   });
-  headHTML+="<th>Kosong</th><th>Skor</th><th>Nilai</th><th title='Tab switch / Paste'>⚠️</th><th></th></tr>";
+  headHTML+="<th title='Soal yang dijawab'>Terjawab</th><th title='Soal kosong'>Tidak Terjawab</th><th title='Jumlah soal'>Total</th><th title='Poin yang didapat'>Nilai</th><th title='Keluar halaman / ganti tab'>⚠️ Tab</th><th title='Salin-tempel jawaban'>⚠️ Paste</th><th></th></tr>";
   thead.innerHTML=headHTML;
 
   const sortMode=$("results-sort")?.value||"batch-fast";
   const {rows,groups}=resultsRows(ex,sortMode);
   if(!rows.length){
-    body.innerHTML=`<tr><td colspan="${9+qIds.length}" class="muted" style="text-align:center;padding:30px">Belum ada hasil.</td></tr>`;
+    body.innerHTML=`<tr><td colspan="${10+qIds.length}" class="muted" style="text-align:center;padding:30px">Belum ada hasil.</td></tr>`;
     return;
   }
   body.innerHTML="";
@@ -5729,21 +5784,18 @@ function renderResults(ex){
       const ans=s.answers?.[qid];
       if(ans==null||ans===""){blankAll++;if(ex.questions?.[qid]?.required)blankReq++}
     });
-    rowHTML+=`<td style="text-align:center;font-weight:800;${blankReq>0?"color:var(--danger)":blankAll>0?"color:var(--warn)":"color:#cbd5e1"}" title="${blankReq} wajib belum dijawab">${blankAll||"0"}${blankReq?` <span style="font-size:11px">(${blankReq}*)</span>`:""}</td>`;
+    const totalQ=qIds.length;
+    const answered=totalQ-blankAll;
     const maxS=s.maxScore||dynamicMax; const score=s.score??0;
-    const pct=maxS?Math.round((score/maxS)*100):0;
-    rowHTML+=`<td style="font-weight:800">${done?score:"—"}</td>`;
-    rowHTML+=`<td style="font-weight:800;color:${pct>=70?"var(--success)":pct>=50?"var(--warn)":"var(--danger)"}">${done?pct+"%":"—"}</td>`;
+    const pct=maxS?score/maxS:0;
+    rowHTML+=`<td style="text-align:center;font-weight:800">${done?answered:"—"}</td>`;
+    rowHTML+=`<td style="text-align:center;font-weight:800;${blankReq>0?"color:var(--danger)":blankAll>0?"color:var(--warn)":"color:#cbd5e1"}" title="${blankReq} wajib belum dijawab">${done?blankAll:"—"}${blankReq?` <span style="font-size:11px">(${blankReq}*)</span>`:""}</td>`;
+    rowHTML+=`<td style="text-align:center;font-weight:700">${totalQ}</td>`;
+    rowHTML+=`<td style="font-weight:800;color:${pct>=0.7?"var(--success)":pct>=0.5?"var(--warn)":"var(--danger)"}">${done?score:"—"}</td>`;
     const tc=s.antiCheat?.tabSwitches||0;
     const pc=s.antiCheat?.pasteCount||0;
-    let cheatLabel="";
-    if(tc||pc){
-      const parts=[];
-      if(tc)parts.push(`Tab ${tc}x`);
-      if(pc)parts.push(`Paste ${pc}x`);
-      cheatLabel=parts.join(" · ");
-    }
-    rowHTML+=`<td style="text-align:center;font-size:11px;${(tc||pc)?"color:var(--danger);font-weight:800":""}" title="${esc(cheatLabel)}">${cheatLabel||""}</td>`;
+    rowHTML+=`<td style="text-align:center;font-size:11px;${tc?"color:var(--danger);font-weight:800":"color:#cbd5e1"}" title="Tab switch">${tc?tc+"x":"—"}</td>`;
+    rowHTML+=`<td style="text-align:center;font-size:11px;${pc?"color:var(--danger);font-weight:800":"color:#cbd5e1"}" title="Paste">${pc?pc+"x":"—"}</td>`;
     rowHTML+=`<td><button class="btn danger small">Reset</button></td>`;
     tr.innerHTML=rowHTML;
     tr.querySelector("button").onclick=async()=>{
@@ -6017,108 +6069,211 @@ $("btn-export-xlsx").onclick=async()=>{
     const dynamicMax = qIds.reduce((sum, qid) => sum + (isManualQ(ex.questions?.[qid])?0:ptsOf(ex.questions?.[qid])), 0);
     const sortMode=$("results-sort")?.value||"batch-fast";
     const {rows,groups}=resultsRows(ex,sortMode);
-    const first=firstStartTime(ex);
 
     const wb=new ExcelJS.Workbook();
     wb.creator="Quiz App";wb.created=new Date();
-    const ws=wb.addWorksheet("Hasil Ujian",{views:[{state:"frozen",xSplit:2,ySplit:4}]});
-    const totalCols=13+qIds.length;
-
-    ws.mergeCells(1,1,1,totalCols+1);
-    const t=ws.getCell(1,1);
-    t.value=`Hasil Ujian: ${ex.title||"-"}`;
-    t.font={bold:true,size:16,color:{argb:"FFFFFFFF"}};
-    t.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF2563EB"}};
-    t.alignment={horizontal:"center",vertical:"middle"};
-    ws.getRow(1).height=32;
+    const ws=wb.addWorksheet("Hasil Ujian");
 
     const headers=["No","Nama","Batch","Mulai","Selesai","Durasi","Telat"];
-    qIds.forEach((qid,i)=>{
-      const q=ex.questions?.[qid];
-      headers.push(`Q${i+1} [${ptsOf(q)}pt]`);
-    });
-    headers.push("Kosong","Skor","Max","Nilai","Tab Switch","Status");
+    qIds.forEach((qid,i)=>headers.push("Q"+(i+1)));
+    headers.push("Terjawab","Tidak Terjawab","Total Pertanyaan","Nilai","Tab Switch","Paste","Status");
+    const totalCols=headers.length;
+    const thin={style:"thin",color:{argb:"FFD1D5DB"}};
+    const border={top:thin,bottom:thin,left:thin,right:thin};
 
-    const headerRow=ws.getRow(4);
+    // Judul + meta: HANYA merge kolom No-Telat (1-7), teks biasa, center.
+    // Jangan merge ke semua kolom Q — di HP teks jadi "terpotong di tengah".
+    // Jangan autoFilter (biar judul tidak ikut sort/filter).
+    try{ ws.autoFilter = null; }catch(e){}
+    ws.mergeCells(1,1,1,7);
+    const t=ws.getCell(1,1);
+    t.value="Hasil Ujian - "+(ex.title||"-");
+    t.font={name:"Calibri",size:13,bold:true,color:{argb:"FF111827"}};
+    t.alignment={horizontal:"center",vertical:"middle",wrapText:true};
+    ws.getRow(1).height=28;
+
+    ws.mergeCells(2,1,2,7);
+    const m=ws.getCell(2,1);
+    m.value="Diekspor: "+new Date().toLocaleString("id-ID")+" | "+qIds.length+" soal | Max "+dynamicMax+" poin";
+    m.font={name:"Calibri",size:10,color:{argb:"FF6B7280"}};
+    m.alignment={horizontal:"center",vertical:"middle",wrapText:true};
+    ws.getRow(2).height=18;
+
+    // Baris 3: header
+    const headerRow=ws.getRow(3);
     headers.forEach((h,i)=>{
       const c=headerRow.getCell(i+1);
-      c.value=h; c.font={bold:true,color:{argb:"FFFFFFFF"}};
+      c.value=h;
+      c.font={name:"Calibri",bold:true,color:{argb:"FFFFFFFF"},size:10};
       c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1E40AF"}};
       c.alignment={horizontal:"center",vertical:"middle",wrapText:true};
-      c.border={top:{style:"thin"},bottom:{style:"thin"},left:{style:"thin"},right:{style:"thin"}};
+      c.border=border;
     });
-    headerRow.height=36;
+    headerRow.height=32;
+
+    // Komentar soal di header Q
+    qIds.forEach((qid,i)=>{
+      const q=ex.questions?.[qid];
+      const cell=headerRow.getCell(8+i);
+      const txt=String(q?.text||"").replace(/\s+/g," ").trim().slice(0,400) || "(tanpa teks)";
+      const lines=["Soal "+(i+1)+" · "+ptsOf(q)+" poin", txt];
+      if(q){
+        const parts=partsOf(q);
+        if(parts){
+          parts.forEach((p,pi)=>{
+            lines.push("Isian "+(pi+1)+(p.label?(" ("+p.label+")"):"")+":");
+            partOpts(q,pi).forEach((o,oi)=>{
+              const s=String(o||"").trim();
+              lines.push("  "+String.fromCharCode(65+oi)+"."+(s?(" "+s.slice(0,80)):""));
+            });
+          });
+        }else if(q.type!=="essay"){
+          optsOf(q).forEach((o,oi)=>{
+            const s=String(o||"").trim();
+            lines.push(String.fromCharCode(65+oi)+"."+(s?(" "+s.slice(0,100)):""));
+          });
+        }
+      }
+      cell.note={texts:[{text: lines.join("\n").slice(0,1000)}]};
+    });
+
+    // Baris 4: KUNCI — merge No s/d Telat, center
+    ws.mergeCells(4,1,4,7);
+    const keyLabel=ws.getCell(4,1);
+    keyLabel.value="KUNCI JAWABAN";
+    keyLabel.font={name:"Calibri",bold:true,size:10,color:{argb:"FF1E3A8A"}};
+    keyLabel.alignment={horizontal:"center",vertical:"middle"};
+    keyLabel.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFDBEAFE"}};
+    for(let i=1;i<=7;i++){
+      const c=ws.getCell(4,i);
+      c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFDBEAFE"}};
+      c.border=border;
+    }
+    qIds.forEach((qid,i)=>{
+      const q=ex.questions?.[qid];
+      let key="-";
+      if(q){
+        if(q.type==="essay"){
+          const keys=(Array.isArray(q.answerKeys)&&q.answerKeys.length)?q.answerKeys:(q.correctAnswer?[q.correctAnswer]:[]);
+          key=keys.length?String(keys[0]).slice(0,20):(q.noKey?"(manual)":"-");
+        }else if(partsOf(q)){
+          key=partsOf(q).map(p=>String.fromCharCode(65+Number(p.correct||0))).join("/");
+        }else if(q.noKey){
+          key="(manual)";
+        }else{
+          key=String.fromCharCode(65+Number(q.correct||0));
+        }
+      }
+      const c=ws.getCell(4,8+i);
+      c.value=key;
+      c.font={name:"Calibri",bold:true,size:10,color:{argb:"FF1E3A8A"}};
+      c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFDBEAFE"}};
+      c.alignment={horizontal:"center",vertical:"middle"};
+      c.border=border;
+    });
+    for(let i=8+qIds.length;i<=totalCols;i++){
+      const c=ws.getCell(4,i);
+      c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFDBEAFE"}};
+      c.border=border;
+    }
+    ws.getRow(4).height=20;
 
     let rowNum=5;
     let no=0;
+    let stripe=0;
     if(groups){
       groups.forEach(g=>{
-        const r=ws.getRow(rowNum);
-        ws.mergeCells(rowNum,1,rowNum,totalCols+1);
-        const c=ws.getCell(rowNum,1);
-        c.value=`\u{1F4E6} ${g.label} — ${g.items.length} orang`;
-        c.font={bold:true,size:12,color:{argb:"FF3730A3"}};
-        c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFEEF2FF"}};
-        c.alignment={horizontal:"left",vertical:"middle"};
-        ws.getRow(rowNum).height=22;
+        // Label batch hanya di kolom Nama (col 2), wrap text — tidak merge lebar
+        const gr=ws.getRow(rowNum);
+        gr.getCell(1).value="";
+        const gc=gr.getCell(2);
+        gc.value="[Batch] "+g.label+" - "+g.items.length+" orang";
+        gc.font={name:"Calibri",bold:true,size:10,color:{argb:"FF3730A3"}};
+        gc.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFEEF2FF"}};
+        gc.alignment={horizontal:"left",vertical:"middle",wrapText:true};
+        for(let i=1;i<=totalCols;i++){
+          const c=gr.getCell(i);
+          c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFEEF2FF"}};
+          c.border=border;
+        }
+        gr.height=20;
         rowNum++;
-        g.items.forEach(it=>{emitExcelRow(ws,it,rowNum,qIds,ex,dynamicMax,++no);rowNum++});
+        g.items.forEach(it=>{
+          emitExcelRow(ws,it,rowNum,qIds,ex,dynamicMax,++no,stripe%2===1);
+          stripe++; rowNum++;
+        });
       });
     }else{
-      rows.forEach(it=>{emitExcelRow(ws,it,rowNum,qIds,ex,dynamicMax,++no);rowNum++});
+      rows.forEach(it=>{
+        emitExcelRow(ws,it,rowNum,qIds,ex,dynamicMax,++no,stripe%2===1);
+        stripe++; rowNum++;
+      });
     }
 
-    ws.getColumn(1).width=5; ws.getColumn(2).width=26; ws.getColumn(3).width=20;
-    ws.getColumn(4).width=20; ws.getColumn(5).width=20; ws.getColumn(6).width=12; ws.getColumn(7).width=11;
-    qIds.forEach((_,i)=>{ws.getColumn(8+i).width=14});
-    ws.getColumn(qIds.length+8).width=9; ws.getColumn(qIds.length+9).width=8;
-    ws.getColumn(qIds.length+10).width=10; ws.getColumn(qIds.length+11).width=10; ws.getColumn(qIds.length+12).width=12;
+    // Lebar kolom
+    ws.getColumn(1).width=5;
+    ws.getColumn(2).width=20;
+    ws.getColumn(3).width=12;
+    ws.getColumn(4).width=12;
+    ws.getColumn(5).width=12;
+    ws.getColumn(6).width=8;
+    ws.getColumn(7).width=7;
+    qIds.forEach((_,i)=>{ws.getColumn(8+i).width=6});
+    const base=qIds.length+8;
+    ws.getColumn(base).width=10;
+    ws.getColumn(base+1).width=13;
+    ws.getColumn(base+2).width=12;
+    ws.getColumn(base+3).width=8;
+    ws.getColumn(base+4).width=10;
+    ws.getColumn(base+5).width=8;
+    ws.getColumn(base+6).width=12;
+
+    // Pastikan tidak ada AutoFilter (judul/meta tidak ikut sort)
+    try{ ws.autoFilter = undefined; delete ws.autoFilter; }catch(e){}
 
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
     a.href=url;
-    a.download=`hasil_${(ex.title||"ujian").replace(/[^a-z0-9]/gi,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.download="hasil_"+((ex.title||"ujian").replace(/[^a-z0-9]+/gi,"_").replace(/^_|_$/g,""))+"_"+new Date().toISOString().slice(0,10)+".xlsx";
     a.click();URL.revokeObjectURL(url);
     const belum=rows.filter(r=>r.status==="new").length;
-    toast(`✅ Excel diunduh (${rows.length} siswa${belum?`, ${belum} belum mulai`:""}${groups?`, ${groups.length} batch`:""})`);
+    toast("✅ Excel diunduh ("+rows.length+" siswa"+(belum?", "+belum+" belum mulai":"")+(groups?", "+groups.length+" batch":"")+")");
   }catch(e){console.error(e);toast("Gagal buat Excel",true)}
 };
 
-function emitExcelRow(ws,it,rowNum,qIds,ex,dynamicMax,no){
+function emitExcelRow(ws,it,rowNum,qIds,ex,dynamicMax,no,stripe){
   const s=it.s||{}, done=!!s.submittedAt, late=it.late||lateInfo(ex,it.pid);
   const st=it.status||sessionStatus(s);
   const row=ws.getRow(rowNum);
-  const rowData=[no,it.name||s.name||"-",it.batch||"Nama Baru",fmtDT(s.startedAt),done?fmtDT(s.submittedAt):"-",done?fmtDur(s.submittedAt-s.startedAt):"-",late.late?`+${fmtGap(late.gap)}`:"-"];
+  const thin={style:"thin",color:{argb:"FFD1D5DB"}};
+  const border={top:thin,bottom:thin,left:thin,right:thin};
+  const fmtX=ms=>{if(!ms)return "-";const d=new Date(ms);const p=n=>String(n).padStart(2,"0");return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`};
+  const rowData=[no,it.name||s.name||"-",it.batch||"Nama Baru",fmtX(s.startedAt),done?fmtX(s.submittedAt):"-",done?fmtDur(s.submittedAt-s.startedAt):"-",late.late?`+${fmtGap(late.gap)}`:"-"];
   qIds.forEach(qid=>{
     const q=ex.questions?.[qid];const ans=s.answers?.[qid];
     if(ans==null||ans===""){rowData.push("-");return}
     if(q?.type==="essay")rowData.push(String(ans).slice(0,40));
     else rowData.push(ansText(q,ans));
   });
-  let blankAll=0,blankReq=0;
-  qIds.forEach(qid=>{
-    const ans=s.answers?.[qid];
-    if(ans==null||ans===""){blankAll++;if(qIds.length&&ex.questions?.[qid]?.required)blankReq++}
-  });
-  rowData.push(blankReq?`${blankAll} (${blankReq} wajib)`:(blankAll||0));
+  const totalQ=qIds.length;
+  const blankAll=qIds.reduce((n,qid)=>{const ans=s.answers?.[qid];return n+((ans==null||ans==="")?1:0);},0);
+  const answered=totalQ-blankAll;
   const maxS=s.maxScore||dynamicMax;const score=s.score??0;
-  const pct=maxS?score/maxS:null;
   const stLabel=st==="done"?"Selesai":st==="progress"?"Sedang dikerjakan":"Belum mulai";
-  rowData.push(done?score:"-",done?maxS:"-",pct!=null?Math.round(pct*100)+"%":"-",s.antiCheat?.tabSwitches||0,stLabel);
-  if(st==="new"){
-    rowData.forEach((v,i)=>{
-      const c=row.getCell(i+1);
-      c.font={italic:true,color:{argb:"FF94A3B8"}};
-      c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF8FAFC"}};
-    });
-  }
-
+  // Terjawab | Tidak Terjawab | Total | Nilai | Tab | Paste | Status
+  rowData.push(done?answered:"-", done?blankAll:"-", totalQ, done?score:"-", s.antiCheat?.tabSwitches||0, s.antiCheat?.pasteCount||0, stLabel);
+  const stripeFill=stripe?{type:"pattern",pattern:"solid",fgColor:{argb:"FFEFF6FF"}}:null; // biru lembut selang-seling
   rowData.forEach((v,i)=>{
     const c=row.getCell(i+1);
-    c.value=v; c.alignment={horizontal:(i===1||i===2)?"left":"center",vertical:"middle",wrapText:i===1};
-    c.border={top:{style:"thin",color:{argb:"FFE2E8F0"}},bottom:{style:"thin",color:{argb:"FFE2E8F0"}},left:{style:"thin",color:{argb:"FFE2E8F0"}},right:{style:"thin",color:{argb:"FFE2E8F0"}}};
+    c.value=v;
+    // Nama kiri, Batch center, lainnya center
+    c.alignment={horizontal:(i===1)?"left":"center",vertical:"middle",wrapText:i===1};
+    c.border=border;
+    c.font={name:"Calibri",size:10,italic:st==="new",color:{argb:st==="new"?"FF94A3B8":"FF111827"}};
+    if(st==="new") c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF8FAFC"}};
+    else if(stripeFill) c.fill=stripeFill;
   });
   if(late.late){
     const cMulai=row.getCell(4);
@@ -6146,12 +6301,14 @@ function emitExcelRow(ws,it,rowNum,qIds,ex,dynamicMax,no){
     }
   });
 
-  const pctCell=row.getCell(qIds.length+11);
-  if(pct!=null){
-    if(pct>=0.7)pctCell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFD1FAE5"}};
-    else if(pct>=0.5)pctCell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFEF3C7"}};
-    else pctCell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFEE2E2"}};
-    pctCell.font={bold:true};
+  // Highlight kolom Nilai (poin)
+  const nilaiCell=row.getCell(qIds.length+11);
+  if(done){
+    const pct=maxS?score/maxS:0;
+    if(pct>=0.7)nilaiCell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFD1FAE5"}};
+    else if(pct>=0.5)nilaiCell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFEF3C7"}};
+    else nilaiCell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFEE2E2"}};
+    nilaiCell.font={bold:true};
   }
 }
 
